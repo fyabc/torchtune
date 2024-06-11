@@ -29,6 +29,7 @@ from torchtune import config, modules, utils
 from torchtune.datasets import ConcatDataset
 from torchtune.modules.peft.peft_utils import (
     get_adapter_params,
+    get_lora_module_names,
     get_merged_lora_ckpt,
     set_trainable_params,
     validate_state_dict_for_lora,
@@ -166,30 +167,41 @@ class LoRAFinetuneRecipeDistributed(FTRecipeInterface):
         """
         Updates the recipe state from checkpoint.
         """
-        if not (
-            utils.SEED_KEY in ckpt_dict
-            and utils.TOTAL_EPOCHS_KEY in ckpt_dict
-            and utils.MAX_STEPS_KEY in ckpt_dict
-        ):
+        try:
+            self.epochs_run = ckpt_dict[utils.EPOCHS_KEY]
+
+            # on mismatch, warn the user and prevent the override
+            if self.seed != ckpt_dict[utils.SEED_KEY]:
+                warn(
+                    message=(
+                        "Config value for seed does not match the checkpoint value, "
+                        f"using the checkpoint value: {ckpt_dict[utils.SEED_KEY]}"
+                    )
+                )
+                self.seed = ckpt_dict[utils.SEED_KEY]
+            if self.max_steps_per_epoch != ckpt_dict[utils.MAX_STEPS_KEY]:
+                warn(
+                    message=(
+                        "Config value for max_steps_per_epoch does not match the checkpoint value, "
+                        f"using the checkpoint value: {ckpt_dict[utils.MAX_STEPS_KEY]}"
+                    )
+                )
+                self.max_steps_per_epoch = ckpt_dict[utils.MAX_STEPS_KEY]
+
+            # on mismatch, warn the user but allow the override
+            if self.total_epochs != ckpt_dict[utils.TOTAL_EPOCHS_KEY]:
+                warn(
+                    message=(
+                        "Config value for total_epochs does not match the checkpoint value, "
+                        f"using the config value: {self.total_epochs}"
+                    )
+                )
+
+        except KeyError as e:
             raise KeyError(
-                "Checkpoint does not contain the required keys needed for updating recipe state."
+                "Checkpoint does not contain the required keys needed for updating recipe state. "
                 "Are you sure you passed in the right recipe checkpoint?"
-            )
-        # If seed, total_epoch or max_steps_per_epoch don't match,
-        # warn the user and overwrite
-        if (
-            self.seed != ckpt_dict[utils.SEED_KEY]
-            or self.total_epochs != ckpt_dict[utils.TOTAL_EPOCHS_KEY]
-            or self.max_steps_per_epoch != ckpt_dict[utils.MAX_STEPS_KEY]
-        ):
-            warn(
-                message="""Configured value for seed, epochs or max_steps_per_epoch
-                does not match the value stored in checkpoint."""
-            )
-        self.seed = utils.set_seed(seed=ckpt_dict[utils.SEED_KEY])
-        self.epochs_run = ckpt_dict[utils.EPOCHS_KEY]
-        self.total_epochs = ckpt_dict[utils.TOTAL_EPOCHS_KEY]
-        self.max_steps_per_epoch = ckpt_dict[utils.MAX_STEPS_KEY]
+            ) from e
 
     def setup(self, cfg: DictConfig) -> None:
         """
@@ -277,6 +289,12 @@ class LoRAFinetuneRecipeDistributed(FTRecipeInterface):
            d. The ``device_id`` param ensures that the FSDP initialization happens on
               the correct device.
         """
+
+        self._lora_rank = cfg_model.lora_rank
+        self._lora_alpha = cfg_model.lora_alpha
+        self._lora_attn_modules = list(cfg_model.lora_attn_modules)
+        self._apply_lora_to_mlp = cfg_model.apply_lora_to_mlp
+        self._apply_lora_to_output = getattr(cfg_model, "apply_lora_to_output", False)
 
         if self._is_rank_zero:
             log.info("FSDP is enabled. Instantiating Model on CPU for Rank 0 ...")
@@ -373,8 +391,8 @@ class LoRAFinetuneRecipeDistributed(FTRecipeInterface):
         if opt_state_dict:
             # Note: technically we should check _contains_fsdp for
             # just the state dict of the adapter cfg, but should be equivalent
-            opt_state_dict = utils.transform_opt_state_dict(
-                opt_state_dict, self._model, optimizer
+            opt_state_dict = FSDP.optim_state_dict_to_load(
+                self._model, optimizer, opt_state_dict
             )
             optimizer.load_state_dict(opt_state_dict)
 
@@ -510,6 +528,18 @@ class LoRAFinetuneRecipeDistributed(FTRecipeInterface):
                     }
                 )
 
+            adapter_config = {
+                "r": self._lora_rank,
+                "lora_alpha": self._lora_alpha,
+                "target_modules": get_lora_module_names(
+                    self._lora_attn_modules,
+                    self._apply_lora_to_mlp,
+                    self._apply_lora_to_output,
+                ),
+                "peft_type": "LORA",
+            }
+            checkpoint_dict.update({utils.ADAPTER_CONFIG: adapter_config})
+
             self._checkpointer.save_checkpoint(
                 checkpoint_dict,
                 epoch=epoch,
@@ -571,6 +601,8 @@ class LoRAFinetuneRecipeDistributed(FTRecipeInterface):
                 logits = logits.transpose(1, 2)
                 # Compute loss
                 loss = self._loss_fn(logits, labels)
+                # free logits otherwise it peaks backward memory
+                del logits
 
                 loss = loss / self._gradient_accumulation_steps
                 running_loss += loss

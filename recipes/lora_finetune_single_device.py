@@ -22,6 +22,7 @@ from torchtune import config, modules, utils
 from torchtune.datasets import ConcatDataset
 from torchtune.modules.peft.peft_utils import (
     get_adapter_params,
+    get_lora_module_names,
     get_merged_lora_ckpt,
     set_trainable_params,
     validate_missing_and_unexpected_for_lora,
@@ -155,21 +156,41 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
         """
         Updates the recipe state from checkpoint.
         """
-        # If seed, total_epoch or max_steps_per_epoch don't match,
-        # warn the user and overwrite
-        if (
-            self.seed != ckpt_dict[utils.SEED_KEY]
-            or self.total_epochs != ckpt_dict[utils.TOTAL_EPOCHS_KEY]
-            or self.max_steps_per_epoch != ckpt_dict[utils.MAX_STEPS_KEY]
-        ):
-            warn(
-                message="""Configured value for seed, epochs or max_steps_per_epoch
-                does not match the value stored in checkpoint."""
-            )
-        self.seed = utils.set_seed(seed=ckpt_dict[utils.SEED_KEY])
-        self.epochs_run = ckpt_dict[utils.EPOCHS_KEY]
-        self.total_epochs = ckpt_dict[utils.TOTAL_EPOCHS_KEY]
-        self.max_steps_per_epoch = ckpt_dict[utils.MAX_STEPS_KEY]
+        try:
+            self.epochs_run = ckpt_dict[utils.EPOCHS_KEY]
+
+            # on mismatch, warn the user and prevent the override
+            if self.seed != ckpt_dict[utils.SEED_KEY]:
+                warn(
+                    message=(
+                        "Config value for seed does not match the checkpoint value, "
+                        f"using the checkpoint value: {ckpt_dict[utils.SEED_KEY]}"
+                    )
+                )
+                self.seed = ckpt_dict[utils.SEED_KEY]
+            if self.max_steps_per_epoch != ckpt_dict[utils.MAX_STEPS_KEY]:
+                warn(
+                    message=(
+                        "Config value for max_steps_per_epoch does not match the checkpoint value, "
+                        f"using the checkpoint value: {ckpt_dict[utils.MAX_STEPS_KEY]}"
+                    )
+                )
+                self.max_steps_per_epoch = ckpt_dict[utils.MAX_STEPS_KEY]
+
+            # on mismatch, warn the user but allow the override
+            if self.total_epochs != ckpt_dict[utils.TOTAL_EPOCHS_KEY]:
+                warn(
+                    message=(
+                        "Config value for total_epochs does not match the checkpoint value, "
+                        f"using the config value: {self.total_epochs}"
+                    )
+                )
+
+        except KeyError as e:
+            raise KeyError(
+                "Checkpoint does not contain the required keys needed for updating recipe state. "
+                "Are you sure you passed in the right recipe checkpoint?"
+            ) from e
 
     def setup(self, cfg: DictConfig) -> None:
         """
@@ -258,6 +279,9 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
 
         self._lora_rank = cfg_model.lora_rank
         self._lora_alpha = cfg_model.lora_alpha
+        self._lora_attn_modules = list(cfg_model.lora_attn_modules)
+        self._apply_lora_to_mlp = cfg_model.apply_lora_to_mlp
+        self._apply_lora_to_output = getattr(cfg_model, "apply_lora_to_output", False)
         self.adapter_params = get_adapter_params(model)
         set_trainable_params(model, self.adapter_params)
 
@@ -275,11 +299,10 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
             )
         else:
             lora_missing, lora_unexpected = None, None
-
         validate_missing_and_unexpected_for_lora(
-            lora_attn_modules=cfg_model.lora_attn_modules,
-            apply_lora_to_mlp=cfg_model.apply_lora_to_mlp,
-            apply_lora_to_output=getattr(cfg_model, "apply_lora_to_output", False),
+            lora_attn_modules=self._lora_attn_modules,
+            apply_lora_to_mlp=self._apply_lora_to_mlp,
+            apply_lora_to_output=self._apply_lora_to_output,
             base_missing=base_missing,
             base_unexpected=base_unexpected,
             lora_missing=lora_missing,
@@ -417,6 +440,17 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
             k: v for k, v in self._model.state_dict().items() if adapter_key_filter(k)
         }
         ckpt_dict.update({utils.ADAPTER_KEY: adapter_state_dict})
+        adapter_config = {
+            "r": self._lora_rank,
+            "lora_alpha": self._lora_alpha,
+            "target_modules": get_lora_module_names(
+                self._lora_attn_modules,
+                self._apply_lora_to_mlp,
+                self._apply_lora_to_output,
+            ),
+            "peft_type": "LORA",
+        }
+        ckpt_dict.update({utils.ADAPTER_CONFIG: adapter_config})
         self._checkpointer.save_checkpoint(
             ckpt_dict,
             epoch=epoch,
