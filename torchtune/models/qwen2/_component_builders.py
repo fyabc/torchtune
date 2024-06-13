@@ -7,7 +7,7 @@ from torchtune.modules.common_utils import reparametrize_as_dtype_state_dict_pos
 
 from torch import nn
 
-from torchtune.models.llama2._model_utils import scale_hidden_dim_for_mlp
+from torchtune.models.qwen2.transformer import Qwen2TransformerDecoder
 
 from torchtune.modules import (
     CausalSelfAttention,
@@ -44,10 +44,12 @@ def qwen2(
     max_seq_len: int,
     attn_dropout: float = 0.0,
     norm_eps: float = 1e-5,
-    rope_base: int = 1_000_000,
-) -> TransformerDecoder:
+    rope_base: float = 1_000_000.0,
+    tie_word_embeddings: bool = False,
+) -> Qwen2TransformerDecoder:
     """TODO(suyang.fy) update docstring."""
     # TODO(suyang.fy): check code.
+    # TODO(suyang.fy): tie word embeddings (following gemma).
     head_dim = embed_dim // num_heads
     num_kv_heads = num_kv_heads if num_kv_heads else num_heads
 
@@ -74,8 +76,8 @@ def qwen2(
         mlp_norm=RMSNorm(dim=embed_dim, eps=norm_eps),
     )
     tok_embeddings = nn.Embedding(vocab_size, embed_dim)
-    output_proj = nn.Linear(embed_dim, vocab_size, bias=False)
-    return TransformerDecoder(
+    output_proj = None if tie_word_embeddings else nn.Linear(embed_dim, vocab_size, bias=False)
+    return Qwen2TransformerDecoder(
         tok_embeddings=tok_embeddings,
         layer=layer,
         num_layers=num_layers,
@@ -112,13 +114,15 @@ def lora_qwen2(
         max_seq_len: int,
         attn_dropout: float = 0.0,
         norm_eps: float = 1e-5,
+        rope_base: float = 1_000_000.0,
+        tie_word_embeddings: bool = False,
         # LoRA args
         lora_rank: int,
         lora_alpha: float,
         lora_dropout: float = 0.0,
         # Quantization args
         quantize_base: bool = False,
-) -> TransformerDecoder:
+) -> Qwen2TransformerDecoder:
     """TODO(suyang.fy) update docstring."""
     # TODO(suyang.fy): check code.
 
@@ -129,6 +133,7 @@ def lora_qwen2(
         num_kv_heads=num_kv_heads,
         max_seq_len=max_seq_len,
         attn_dropout=attn_dropout,
+        rope_base=rope_base,
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
@@ -156,13 +161,16 @@ def lora_qwen2(
 
     tok_embeddings = nn.Embedding(vocab_size, embed_dim)
 
-    # TODO: quantize_base is not applied to final output_proj currently.
-    output_proj = (
-        LoRALinear(embed_dim, vocab_size, rank=lora_rank, alpha=lora_alpha, dropout=lora_dropout)
-        if apply_lora_to_output
-        else nn.Linear(embed_dim, vocab_size, bias=False)
-    )
-    model = TransformerDecoder(
+    if tie_word_embeddings:
+        output_proj = None
+    else:
+        # TODO: quantize_base is not applied to final output_proj currently.
+        output_proj = (
+            LoRALinear(embed_dim, vocab_size, rank=lora_rank, alpha=lora_alpha, dropout=lora_dropout)
+            if apply_lora_to_output
+            else nn.Linear(embed_dim, vocab_size, bias=False)
+        )
+    model = Qwen2TransformerDecoder(
         tok_embeddings=tok_embeddings,
         layer=layer,
         num_layers=num_layers,
@@ -198,6 +206,7 @@ def lora_qwen2_self_attention(
     num_kv_heads: int,
     max_seq_len: int,
     attn_dropout: float = 0.0,
+    rope_base: float = 1_000_000.0,
     # LoRA args
     lora_rank: int,
     lora_alpha: float,
@@ -222,6 +231,7 @@ def lora_qwen2_self_attention(
             by :func:`~torchtune.modules.KVCache`
         attn_dropout (float): dropout value passed onto scaled_dot_product_attention.
             Default: 0.0
+        rope_base (float): the base period of the RoPE embeddings. Default: 1_000_000.0
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): LoRA dropout probability. Default: 0.0
@@ -291,7 +301,7 @@ def lora_qwen2_self_attention(
         if "output_proj" in lora_modules
         else nn.Linear(embed_dim, embed_dim, bias=False)
     )
-    rope = RotaryPositionalEmbeddings(dim=head_dim, max_seq_len=max_seq_len)
+    rope = RotaryPositionalEmbeddings(dim=head_dim, max_seq_len=max_seq_len, base=rope_base)
     self_attn = CausalSelfAttention(
         embed_dim=embed_dim,
         num_heads=num_heads,

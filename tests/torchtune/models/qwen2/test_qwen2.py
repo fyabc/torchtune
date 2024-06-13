@@ -41,7 +41,6 @@ class TestQwen2:
             intermediate_dim=INTER_DIM,
             max_seq_len=MAX_SEQ_LEN,
         )
-        # TODO
         fixed_init_model(model, min_val=-0.25, max_val=0.5)
         actual = model(inputs)
         expected = torch.tensor(3.9763)

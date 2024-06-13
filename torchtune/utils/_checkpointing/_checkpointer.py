@@ -431,6 +431,9 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 dim=self._config["hidden_size"],
                 head_dim=self._config["head_dim"],
             )
+        elif self._model_type == ModelType.QWEN2:
+            # TODO(suyang.fy): qwen2_hf_to_tune (following gemma)
+            pass
         else:
             converted_state_dict[utils.MODEL_KEY] = convert_weights.hf_to_tune(
                 merged_state_dict,
