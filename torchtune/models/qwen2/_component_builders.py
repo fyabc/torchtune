@@ -49,7 +49,6 @@ def qwen2(
 ) -> Qwen2TransformerDecoder:
     """TODO(suyang.fy) update docstring."""
     # TODO(suyang.fy): check code.
-    # TODO(suyang.fy): tie word embeddings (following gemma).
     head_dim = embed_dim // num_heads
     num_kv_heads = num_kv_heads if num_kv_heads else num_heads
 

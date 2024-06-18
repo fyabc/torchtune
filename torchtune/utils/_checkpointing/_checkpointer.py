@@ -20,6 +20,10 @@ from torchtune.models.mistral import (
     mistral_reward_hf_to_tune,
     mistral_reward_tune_to_hf,
 )
+from torchtune.models.qwen2 import (
+    qwen2_hf_to_tune,
+    qwen2_tune_to_hf,
+)
 from torchtune.models.phi3 import phi3_hf_to_tune, phi3_tune_to_hf
 from torchtune.utils._checkpointing._checkpointer_utils import (
     get_path,
@@ -432,8 +436,13 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 head_dim=self._config["head_dim"],
             )
         elif self._model_type == ModelType.QWEN2:
-            # TODO(suyang.fy): qwen2_hf_to_tune (following gemma)
-            pass
+            converted_state_dict[utils.MODEL_KEY] = qwen2_hf_to_tune(
+                merged_state_dict,
+                num_heads=self._config["num_attention_heads"],
+                num_kv_heads=self._config["num_key_value_heads"],
+                dim=self._config["hidden_size"],
+                tie_word_embeddings=self._config["tie_word_embeddings"],
+            )
         else:
             converted_state_dict[utils.MODEL_KEY] = convert_weights.hf_to_tune(
                 merged_state_dict,
@@ -491,6 +500,14 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 num_kv_heads=self._config["num_key_value_heads"],
                 dim=self._config["hidden_size"],
                 head_dim=self._config["head_dim"],
+            )
+        elif self._model_type == ModelType.QWEN2:
+            state_dict[utils.MODEL_KEY] = qwen2_tune_to_hf(
+                state_dict[utils.MODEL_KEY],
+                num_heads=self._config["num_attention_heads"],
+                num_kv_heads=self._config["num_key_value_heads"],
+                dim=self._config["hidden_size"],
+                tie_word_embeddings=self._config["tie_word_embeddings"],
             )
         else:
             state_dict[utils.MODEL_KEY] = convert_weights.tune_to_hf(

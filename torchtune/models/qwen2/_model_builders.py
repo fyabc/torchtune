@@ -7,9 +7,10 @@ from typing import List
 from functools import partial
 
 from torchtune.models.qwen2._component_builders import qwen2, lora_qwen2
+from torchtune.models.qwen2._tokenizer import Qwen2Tokenizer
+from torchtune.models.qwen2.transformer import Qwen2TransformerDecoder
 
 from torchtune.modules import TransformerDecoder
-from torchtune.modules.tokenizers import SentencePieceTokenizer
 from torchtune.modules.peft import LORA_ATTN_MODULES
 
 """
@@ -19,7 +20,7 @@ qwen2 7B model.
 """
 
 
-def qwen2_7b() -> TransformerDecoder:
+def qwen2_7b() -> Qwen2TransformerDecoder:
     """
     Builder for creating a Qwen2 model initialized w/ the default 7B parameter values
     from https://github.com/QwenLM/Qwen2
@@ -41,8 +42,14 @@ def qwen2_7b() -> TransformerDecoder:
     )
 
 
-def qwen2_tokenizer(path: str):
-    pass
+def qwen2_tokenizer(path: str) -> Qwen2Tokenizer:
+    return Qwen2Tokenizer(
+        path,
+        unk_token="<|endoftext|>",
+        bos_token=None,
+        eos_token="<|endoftext|>",
+        pad_token="<|endoftext|>",
+    )
 
 
 def lora_qwen2_7b(
@@ -53,7 +60,7 @@ def lora_qwen2_7b(
         lora_alpha: float = 16,
         lora_dropout: float = 0.05,
         quantize_base: bool = False,
-) -> TransformerDecoder:
+) -> Qwen2TransformerDecoder:
     """
     Builder for creating a Qwen2 7B model with LoRA enabled.
 
