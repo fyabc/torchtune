@@ -8,7 +8,27 @@ from typing import Dict
 
 import torch
 
-from torchtune.models.convert_weights import _FROM_HF, get_mapped_key
+from torchtune.models.convert_weights import get_mapped_key
+
+# state dict key mappings from HF's format to torchtune's format
+_FROM_HF = {
+    "model.embed_tokens.weight": "tok_embeddings.weight",
+    "model.layers.{}.self_attn.q_proj.weight": "layers.{}.attn.q_proj.weight",
+    "model.layers.{}.self_attn.q_proj.bias": "layers.{}.attn.q_proj.bias",
+    "model.layers.{}.self_attn.k_proj.weight": "layers.{}.attn.k_proj.weight",
+    "model.layers.{}.self_attn.k_proj.bias": "layers.{}.attn.k_proj.bias",
+    "model.layers.{}.self_attn.v_proj.weight": "layers.{}.attn.v_proj.weight",
+    "model.layers.{}.self_attn.v_proj.bias": "layers.{}.attn.v_proj.bias",
+    "model.layers.{}.self_attn.o_proj.weight": "layers.{}.attn.output_proj.weight",
+    "model.layers.{}.self_attn.rotary_emb.inv_freq": None,
+    "model.layers.{}.mlp.gate_proj.weight": "layers.{}.mlp.w1.weight",
+    "model.layers.{}.mlp.up_proj.weight": "layers.{}.mlp.w3.weight",
+    "model.layers.{}.mlp.down_proj.weight": "layers.{}.mlp.w2.weight",
+    "model.layers.{}.input_layernorm.weight": "layers.{}.sa_norm.scale",
+    "model.layers.{}.post_attention_layernorm.weight": "layers.{}.mlp_norm.scale",
+    "model.norm.weight": "norm.scale",
+    "lm_head.weight": "output.weight",
+}
 
 
 QWEN2_TIED_KEY = "lm_head.weight"

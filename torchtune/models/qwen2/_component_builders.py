@@ -58,9 +58,9 @@ def qwen2(
         num_heads=num_heads,
         num_kv_heads=num_kv_heads,
         head_dim=head_dim,
-        q_proj=nn.Linear(embed_dim, num_heads * head_dim, bias=False),
-        k_proj=nn.Linear(embed_dim, num_kv_heads * head_dim, bias=False),
-        v_proj=nn.Linear(embed_dim, num_kv_heads * head_dim, bias=False),
+        q_proj=nn.Linear(embed_dim, num_heads * head_dim, bias=True),
+        k_proj=nn.Linear(embed_dim, num_kv_heads * head_dim, bias=True),
+        v_proj=nn.Linear(embed_dim, num_kv_heads * head_dim, bias=True),
         output_proj=nn.Linear(embed_dim, embed_dim, bias=False),
         pos_embeddings=rope,
         kv_cache=None,
@@ -259,10 +259,11 @@ def lora_qwen2_self_attention(
             rank=lora_rank,
             alpha=lora_alpha,
             dropout=lora_dropout,
+            use_bias=True,
             quantize_base=quantize_base,
         )
         if "q_proj" in lora_modules
-        else nn.Linear(embed_dim, num_heads * head_dim, bias=False)
+        else nn.Linear(embed_dim, num_heads * head_dim, bias=True)
     )
     k_proj = (
         LoRALinear(
@@ -271,10 +272,11 @@ def lora_qwen2_self_attention(
             rank=lora_rank,
             alpha=lora_alpha,
             dropout=lora_dropout,
+            use_bias=True,
             quantize_base=quantize_base,
         )
         if "k_proj" in lora_modules
-        else nn.Linear(embed_dim, num_kv_heads * head_dim, bias=False)
+        else nn.Linear(embed_dim, num_kv_heads * head_dim, bias=True)
     )
     v_proj = (
         LoRALinear(
@@ -283,10 +285,11 @@ def lora_qwen2_self_attention(
             rank=lora_rank,
             alpha=lora_alpha,
             dropout=lora_dropout,
+            use_bias=True,
             quantize_base=quantize_base,
         )
         if "v_proj" in lora_modules
-        else nn.Linear(embed_dim, num_kv_heads * head_dim, bias=False)
+        else nn.Linear(embed_dim, num_kv_heads * head_dim, bias=True)
     )
     output_proj = (
         LoRALinear(
