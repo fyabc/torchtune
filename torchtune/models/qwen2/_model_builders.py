@@ -29,7 +29,7 @@ def qwen2_7b() -> Qwen2TransformerDecoder:
         TransformerDecoder: Instantiation of Qwen2 7B model
     """
     return qwen2(
-        vocab_size=151936,
+        vocab_size=152064,
         num_layers=28,
         num_heads=28,
         num_kv_heads=4,

@@ -4,17 +4,17 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from tokenizers import Tokenizer as TokenizerFast
 
-from torchtune.data import Message
+from torchtune.data import Message, truncate
 from torchtune.modules.tokenizers import Tokenizer
 
 
-ENDOFTEXT = '<|endoftext|>'
-IM_START = '<|im_start|>'
-IM_END = '<|im_end|>'
+ENDOFTEXT = "<|endoftext|>"
+IM_START = "<|im_start|>"
+IM_END = "<|im_end|>"
 
 
 class Qwen2Tokenizer(Tokenizer):
@@ -31,6 +31,11 @@ class Qwen2Tokenizer(Tokenizer):
         >>> print(tokenized_text)
         []
     """
+
+    system = f"{IM_START}system\n{{content}}{IM_END}\n"
+    user = f"{IM_START}user\n{{content}}{IM_END}\n"
+    assistant = f"{IM_START}assistant\n{{content}}{IM_END}\n"
+    assistant_for_generation = f"{IM_START}assistant\n"
 
     def __init__(
         self,
@@ -61,7 +66,7 @@ class Qwen2Tokenizer(Tokenizer):
         self.pad_id = None if pad_token is None else vocab[pad_token]
         self.im_start_id = vocab[IM_START]
         self.im_end_id = vocab[IM_END]
-        self.stop_tokens = {self.eos_id}
+        self.stop_tokens = [self.eos_id, self.im_end_id]
 
     def encode(
         self, text: str, add_bos: bool = True, add_eos: bool = True, **kwargs
@@ -123,22 +128,56 @@ class Qwen2Tokenizer(Tokenizer):
         Returns:
             str: The decoded string.
         """
-        text = self._tokenizer.decode(token_ids, skip_special_tokens=skip_special_tokens)
+        text = self._tokenizer.decode(
+            token_ids, skip_special_tokens=skip_special_tokens
+        )
         return text
 
     def tokenize_messages(
         self,
         messages: List[Message],
+        max_seq_len: Optional[int] = None,
+        apply_chat_template: bool = True,
+        add_eos: bool = True,
         **kwargs,
-    ) -> List[int]:
+    ) -> Tuple[List[int], List[bool]]:
         """
         Given a list of messages, return a list of tokens for the concatenated
         and formatted messages.
 
         Args:
             messages (List[Message]): The message list to tokenize.
+            max_seq_len (Optional[int]): The maximum sequence length.
+            apply_chat_template (bool): Whether to apply Qwen2 chat template.
+            add_eos (bool): Weather to append EOS to the tokenized messages.
 
         Returns:
-            List[int]: The list of token ids.
+            Tuple[List[int], List[bool]]: The list of token ids and the list of masks.
         """
-        return self.encode("".join(message.content for message in messages), add_bos=False, add_eos=False)
+        tokens = []
+        mask = []
+        for index, message in enumerate(messages):
+            content = ""
+            if message.role == "system":
+                content = self.system.format(content=message.content)
+            elif message.role == "user":
+                content = self.user.format(content=message.content)
+            elif message.role == "assistant":
+                if index == len(messages) - 1 and not message.content:
+                    content = self.assistant_for_generation
+                else:
+                    content = self.assistant.format(content=message.content)
+            tokenized_message = self.encode(content, add_bos=False, add_eos=False)
+            tokens.extend(tokenized_message)
+            mask.extend([message.masked] * len(tokenized_message))
+
+            if max_seq_len and len(tokens) >= max_seq_len:
+                break
+
+        if add_eos:
+            tokens = tokens + [self.eos_id]
+            mask = mask + [True]
+        if max_seq_len:
+            tokens = truncate(tokens, max_seq_len, self.eos_id)
+            mask = truncate(mask, max_seq_len, True)
+        return tokens, mask

@@ -76,14 +76,17 @@ def qwen2_hf_to_tune(
     for key, value in state_dict.items():
         if tie_word_embeddings and QWEN2_TIED_KEY not in key:     # Skip loading the output projection weights
             continue
-        if "rotary_emb.inv_freq" not in key:  # Skip loading the position embeddings
-            new_key = get_mapped_key(key, _FROM_HF)
+        if "rotary_emb.inv_freq" in key:  # Skip loading the position embeddings
+            continue
+
+        new_key = get_mapped_key(key, _FROM_HF)
+        if key.endswith('.weight'):
             if "q_proj" in key:
                 value = _permute(value, num_heads)
             elif "k_proj" in key:
                 value = _permute(value, num_kv_heads)
 
-            converted_state_dict[new_key] = value
+        converted_state_dict[new_key] = value
     return converted_state_dict
 
 
