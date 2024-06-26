@@ -23,7 +23,7 @@ qwen2 7B model.
 def qwen2_7b() -> Qwen2TransformerDecoder:
     """
     Builder for creating a Qwen2 model initialized w/ the default 7B parameter values
-    from https://github.com/QwenLM/Qwen2
+    from https://huggingface.co/Qwen/Qwen2-7B-Instruct
 
     Returns:
         TransformerDecoder: Instantiation of Qwen2 7B model

@@ -8,13 +8,12 @@ from torchtune.modules.common_utils import reparametrize_as_dtype_state_dict_pos
 from torch import nn
 
 from torchtune.models.qwen2.transformer import Qwen2TransformerDecoder
+from torchtune.models.qwen2._positional_embeddings import Qwen2RotaryPositionalEmbeddings
 
 from torchtune.modules import (
     CausalSelfAttention,
     FeedForward,
     RMSNorm,
-    RotaryPositionalEmbeddings,
-    TransformerDecoder,
     TransformerDecoderLayer,
 )
 
@@ -52,7 +51,7 @@ def qwen2(
     head_dim = embed_dim // num_heads
     num_kv_heads = num_kv_heads if num_kv_heads else num_heads
 
-    rope = RotaryPositionalEmbeddings(dim=head_dim, max_seq_len=max_seq_len, base=rope_base)
+    rope = Qwen2RotaryPositionalEmbeddings(dim=head_dim, max_seq_len=max_seq_len, base=rope_base)
     self_attn = CausalSelfAttention(
         embed_dim=embed_dim,
         num_heads=num_heads,
@@ -303,7 +302,7 @@ def lora_qwen2_self_attention(
         if "output_proj" in lora_modules
         else nn.Linear(embed_dim, embed_dim, bias=False)
     )
-    rope = RotaryPositionalEmbeddings(dim=head_dim, max_seq_len=max_seq_len, base=rope_base)
+    rope = Qwen2RotaryPositionalEmbeddings(dim=head_dim, max_seq_len=max_seq_len, base=rope_base)
     self_attn = CausalSelfAttention(
         embed_dim=embed_dim,
         num_heads=num_heads,

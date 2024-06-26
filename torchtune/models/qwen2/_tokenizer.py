@@ -138,7 +138,6 @@ class Qwen2Tokenizer(Tokenizer):
         messages: List[Message],
         max_seq_len: Optional[int] = None,
         apply_chat_template: bool = True,
-        add_eos: bool = True,
         **kwargs,
     ) -> Tuple[List[int], List[bool]]:
         """
@@ -149,13 +148,13 @@ class Qwen2Tokenizer(Tokenizer):
             messages (List[Message]): The message list to tokenize.
             max_seq_len (Optional[int]): The maximum sequence length.
             apply_chat_template (bool): Whether to apply Qwen2 chat template.
-            add_eos (bool): Weather to append EOS to the tokenized messages.
 
         Returns:
             Tuple[List[int], List[bool]]: The list of token ids and the list of masks.
         """
         tokens = []
         mask = []
+        is_generation = False
         for index, message in enumerate(messages):
             content = ""
             if message.role == "system":
@@ -165,6 +164,7 @@ class Qwen2Tokenizer(Tokenizer):
             elif message.role == "assistant":
                 if index == len(messages) - 1 and not message.content:
                     content = self.assistant_for_generation
+                    is_generation = True
                 else:
                     content = self.assistant.format(content=message.content)
             tokenized_message = self.encode(content, add_bos=False, add_eos=False)
@@ -174,7 +174,7 @@ class Qwen2Tokenizer(Tokenizer):
             if max_seq_len and len(tokens) >= max_seq_len:
                 break
 
-        if add_eos:
+        if not is_generation:
             tokens = tokens + [self.eos_id]
             mask = mask + [True]
         if max_seq_len:

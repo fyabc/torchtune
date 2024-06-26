@@ -67,6 +67,7 @@ def qwen2_hf_to_tune(
         head_dim = dim // num_heads
 
     def _permute(t, n_heads):
+        return t
         return (
             t.view(n_heads, 2, head_dim // 2, dim)
             .transpose(1, 2)
