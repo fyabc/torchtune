@@ -24,7 +24,7 @@ class Qwen2RotaryPositionalEmbeddings(nn.Module):
             head in the attention module computed as ``embed_dim`` // ``num_heads``
         max_seq_len (int): Maximum expected sequence length for the
             model, if exceeded the cached freqs will be recomputed
-        base (int): The base for the geometric progression used to compute
+        base (float): The base for the geometric progression used to compute
             the rotation angles
     """
 
@@ -32,7 +32,7 @@ class Qwen2RotaryPositionalEmbeddings(nn.Module):
             self,
             dim: int,
             max_seq_len: int = 4096,
-            base: int = 10_000,
+            base: float = 1_000_000.0,
     ) -> None:
         super().__init__()
         self.dim = dim
@@ -104,8 +104,8 @@ class Qwen2RotaryPositionalEmbeddings(nn.Module):
         rope_cache = rope_cache.view(-1, seq_len, 1, head_dim * 2)
 
         # [b, s, 1, h_d]
-        cos = rope_cache[..., :head_dim]
-        sin = rope_cache[..., head_dim:]
+        cos = rope_cache[..., :head_dim].to(x.dtype)
+        sin = rope_cache[..., head_dim:].to(x.dtype)
 
         x1 = x[..., : x.shape[-1] // 2]
         x2 = x[..., x.shape[-1] // 2 :]
