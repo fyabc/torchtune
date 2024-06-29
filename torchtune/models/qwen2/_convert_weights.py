@@ -68,6 +68,7 @@ def qwen2_hf_to_tune(
 
     def _permute(t, n_heads):
         return t
+        # TODO(suyang.fy): remove unused permutation.
         return (
             t.view(n_heads, 2, head_dim // 2, dim)
             .transpose(1, 2)
@@ -123,6 +124,8 @@ def qwen2_tune_to_hf(
         head_dim = dim // num_heads
 
     def _permute(t, n_heads):
+        return t
+        # TODO(suyang.fy): remove unused permutation.
         return (
             t.view(n_heads, head_dim // 2, 2, dim)
             .transpose(1, 2)
